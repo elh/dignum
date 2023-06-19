@@ -2,6 +2,7 @@
   :description "Dignum Server"
   :url "https://github.com/elh/dignum"
   :dependencies [[org.clojure/clojure "1.11.1"]
+                 [org.clojure/data.json "2.4.0"]
                  [ring/ring-jetty-adapter "1.10.0"]
                  [ring/ring-json "0.5.1"]]
   :main ^:skip-aot dignum.core
