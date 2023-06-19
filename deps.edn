@@ -1,0 +1,8 @@
+;; in addition to lein project.clj because of issues with lein-clj-kondo plugin
+{:paths ["src"]
+ :deps
+ {org.clojure/clojure {:mvn/version "1.11.1"}}
+ :aliases
+ {:lint
+  {:replace-deps {clj-kondo/clj-kondo {:mvn/version "2022.11.02"}}
+   :main-opts ["-m" "clj-kondo.main" "--lint" "src"]}}}
