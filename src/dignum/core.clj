@@ -1,7 +1,12 @@
 (ns dignum.core
-  (:gen-class))
+  (:gen-class)
+  (:require [ring.adapter.jetty :as jetty]))
+
+(defn handler [_]
+  {:status 200
+   :headers {"Content-Type" "text/plain"}
+   :body "Hello World"})
 
 (defn -main
-  "I don't do a whole lot ... yet."
   [& _]
-  (println "Hello, World!"))
+  (jetty/run-jetty handler {:port 3000}))
