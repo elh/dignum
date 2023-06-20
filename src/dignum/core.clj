@@ -27,13 +27,8 @@
       ;; no need to stringify-keys. wrap-json-response handles
       (set/rename-keys {:xt/id :_id})))
 
-;; TODO: replace with real schema resources
 ;; TODO: should schemas enforce additionalProperties=false?
 ;; TODO: should we ensure schemas do not break core fields like id?
-(def test-schema {"type" "object"
-                  "properties" {"foo" {"type" "string"}},
-                  "required" ["foo"]})
-
 (def type-schema {"type" "object"
                   "properties" {"_id" {"type" "string"
                                        "pattern" "^type\\/.*"}
@@ -42,7 +37,7 @@
                   "additionalProperties" false})
 
 ;; TODO: generalize create-type and create-record?
-;; TODO: check that type with id does not already exist
+;; TODO: check that type with id does not already exist. also check for "type/type"
 (defn create-type [xtdb-client record]
   (let [validation (jinx/validate
                     record
@@ -61,20 +56,23 @@
            :body {:message (str "Failed validation: " e)}})))))
 
 (defn create-record [xtdb-client type record]
-  ;; TODO: get schema to validate with from type
-  (let [validation (jinx/validate
-                    record
-                    (jinx/schema test-schema))]
-    (if (not (:valid? validation))
-      {:status 400
-       :body {:message (str "Failed validation: " (:errors validation))}}
-      (let [id (.toString (java.util.UUID/randomUUID))
-            xt-record (-> (to-xtdb record)
-                          (assoc :xt/id (str type "/" id))
-                          (assoc :_type (str "type/" type)))
-            tx (xt/submit-tx xtdb-client [[::xt/put xt-record]])]
-        (xt/await-tx xtdb-client tx)
-        (ring-response/response (to-rest xt-record))))))
+  (let [type-record (xt/entity (xt/db xtdb-client) (str "type/" type))]
+    (if (nil? type-record)
+      {:status 404
+       :body {:message (str "Type not found: " type)}}
+      (let [validation (jinx/validate
+                        record
+                        (jinx/schema (get type-record "schema")))]
+        (if (not (:valid? validation))
+          {:status 400
+           :body {:message (str "Failed validation: " (:errors validation))}}
+          (let [id (.toString (java.util.UUID/randomUUID))
+                xt-record (-> (to-xtdb record)
+                              (assoc :xt/id (str type "/" id))
+                              (assoc :_type (str "type/" type)))
+                tx (xt/submit-tx xtdb-client [[::xt/put xt-record]])]
+            (xt/await-tx xtdb-client tx)
+            (ring-response/response (to-rest xt-record))))))))
 
 (defn create-handler [xtdb-client req]
   (if (nil? (:body req))
