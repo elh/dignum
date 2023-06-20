@@ -4,26 +4,34 @@
             [ring.util.response :as ring-response]
             [ring.middleware.json :as ring-json]
             [ring.middleware.params :as ring-params]
-            [clojure.data.json :as json]))
+            [xtdb.api :as xt]))
 
 (defn- log [m]
-  (println (json/write-str m)))
+  (println m))
 
 ;; hack. I expected wrap-json-body to handle this for us
 (defn- is-empty-body? [body]
   (= (.getName (type body)) "org.eclipse.jetty.server.HttpInputOverHTTP"))
 
-(defn handler [req]
+(defn create-handler [_ req]
+  (ring-response/response (:body req)))
+
+(defn handler [xtdb-client req]
   (let [req (if (is-empty-body? (:body req))
               (assoc req :body nil)
               req)]
     (log {:msg "request received" :req req})
-    (ring-response/response {:foo "bar"})))
+    (case (:request-method req)
+      :post (create-handler xtdb-client req)
+      {:status 501
+       :body "Unimplemented"})))
 
-(defn -main
-  [& _]
-  (jetty/run-jetty (-> handler
-                       ring-json/wrap-json-response
-                       ring-json/wrap-json-body
-                       ring-params/wrap-params)
-                   {:port 3000}))
+(defn -main []
+  (let [xtdb-url (or (System/getenv "XTDB_URL")
+                     "http://localhost:9999")
+        xtdb-client (xt/new-api-client xtdb-url)]
+    (jetty/run-jetty (-> (partial handler xtdb-client)
+                         ring-json/wrap-json-response
+                         ring-json/wrap-json-body
+                         ring-params/wrap-params)
+                     {:port 3000})))
