@@ -10,11 +10,14 @@
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
+;; TODO: add tests
+;; TODO: implement PUT
+;; TODO: implement DELETE
+;; TODO: document
+
 (def type-schema {"type" "object"
-                  "properties" {"_id" {"type" "string"
-                                       "pattern" "^type\\/.*"}
-                                "schema" {"type" "object"}},
-                  "required" ["_id", "schema"]
+                  "properties" {"schema" {"type" "object"}},
+                  "required" ["schema"]
                   "additionalProperties" false})
 
 (defn- log [m]
@@ -37,18 +40,34 @@
 (defn- uri-parts [uri]
   (str/split (str/replace-first uri #"/" "") #"/"))
 
-;; TODO: generalize create-type and create-record?
-;; TODO: check that type with id does not already exist. also check for "type/type"
-;; TODO: should schemas enforce additionalProperties=false?
-;; TODO: should we ensure schemas do not break core fields like id?
+;; type schemas only validate non-underscore, non-system fields
+(defn- remove-underscore-keys [m]
+  (apply dissoc m (filter #(str/starts-with? % "_") (keys m))))
+
 (defn create-type [xtdb-client record]
   (let [validation (jinx/validate
-                    record
+                    (remove-underscore-keys record)
                     (jinx/schema type-schema))]
-    (if (not (:valid? validation))
+    (cond
+      (not (:valid? validation))
       {:status 400
        :body {:message (str "Failed validation: " (:errors validation))}}
+
+      (not (re-matches #"type/\w+" (get record "_id")))
+      {:status 400
+       :body {:message "'id' must be of the form 'type/<id>'"}}
+
+      (= (get record "_id") "type/type")
+      {:status 403
+       :body {:message "Cannot create or update type/type"}}
+
+      (some? (xt/entity (xt/db xtdb-client) (get record "_id")))
+      {:status 403
+       :body {:message (str "Type already exists: " (get record "_id"))}}
+
+      :else
       (try
+        ;; exception thrown if schema is invalid
         (jinx/schema (get record "schema"))
         (let [xt-record (assoc (to-xtdb record) :_type "type/type")
               tx (xt/submit-tx xtdb-client [[::xt/put xt-record]])]
@@ -65,7 +84,7 @@
        :body {:message (str "Type not found: " type)}}
       (let [type-record (to-rest xt-type-record)
             validation (jinx/validate
-                        record
+                        (remove-underscore-keys record)
                         (jinx/schema (get type-record "schema")))]
         (if (not (:valid? validation))
           {:status 400
