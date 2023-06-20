@@ -1,6 +1,8 @@
 (ns dignum.core
   (:gen-class)
-  (:require [ring.adapter.jetty :as jetty]
+  (:require [clojure.walk :as walk]
+            [clojure.set :as set]
+            [ring.adapter.jetty :as jetty]
             [ring.util.response :as ring-response]
             [ring.middleware.json :as ring-json]
             [ring.middleware.params :as ring-params]
@@ -13,8 +15,23 @@
 (defn- is-empty-body? [body]
   (= (.getName (type body)) "org.eclipse.jetty.server.HttpInputOverHTTP"))
 
-(defn create-handler [_ req]
-  (ring-response/response (:body req)))
+(defn- to-xtdb [record]
+  (-> record
+      (walk/keywordize-keys)
+      (set/rename-keys {:id :xt/id})))
+
+(defn- to-rest [record]
+  (-> record
+      ;; no need to stringify-keys. wrap-json-response handles
+      (set/rename-keys {:xt/id :id})))
+
+(defn create-handler [xtdb-client req]
+  ;; TODO: define schemas and validate schema on write
+  (let [id (.toString (java.util.UUID/randomUUID))
+        record (assoc (to-xtdb (:body req)) :xt/id id)
+        tx (xt/submit-tx xtdb-client [[::xt/put record]])]
+    (xt/await-tx xtdb-client tx)
+    (ring-response/response (to-rest record))))
 
 (defn handler [xtdb-client req]
   (let [req (if (is-empty-body? (:body req))
@@ -27,8 +44,7 @@
        :body "Unimplemented"})))
 
 (defn -main []
-  (let [xtdb-url (or (System/getenv "XTDB_URL")
-                     "http://localhost:9999")
+  (let [xtdb-url (or (System/getenv "XTDB_URL") "http://localhost:9999")
         xtdb-client (xt/new-api-client xtdb-url)]
     (jetty/run-jetty (-> (partial handler xtdb-client)
                          ring-json/wrap-json-response
