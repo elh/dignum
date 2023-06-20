@@ -2,6 +2,7 @@
   (:gen-class)
   (:require [clojure.walk :as walk]
             [clojure.set :as set]
+            [clojure.string :as str]
             [ring.adapter.jetty :as jetty]
             [ring.util.response :as ring-response]
             [ring.middleware.json :as ring-json]
@@ -33,6 +34,14 @@
     (xt/await-tx xtdb-client tx)
     (ring-response/response (to-rest record))))
 
+(defn get-handler [xtdb-client req]
+  (let [id (str/replace-first (:uri req) #"/" "")
+        record (xt/entity (xt/db xtdb-client) id)]
+    (if (nil? record)
+      {:status 404
+       :body "Not Found"}
+      (ring-response/response (to-rest record)))))
+
 (defn handler [xtdb-client req]
   (let [req (if (is-empty-body? (:body req))
               (assoc req :body nil)
@@ -40,6 +49,7 @@
     (log {:msg "request received" :req req})
     (case (:request-method req)
       :post (create-handler xtdb-client req)
+      :get (get-handler xtdb-client req)
       {:status 501
        :body "Unimplemented"})))
 
