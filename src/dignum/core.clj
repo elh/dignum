@@ -10,6 +10,13 @@
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
+(def type-schema {"type" "object"
+                  "properties" {"_id" {"type" "string"
+                                       "pattern" "^type\\/.*"}
+                                "schema" {"type" "object"}},
+                  "required" ["_id", "schema"]
+                  "additionalProperties" false})
+
 (defn- log [m]
   (println m))
 
@@ -24,20 +31,16 @@
 
 (defn- to-rest [xt-record]
   (-> xt-record
-      ;; no need to stringify-keys. wrap-json-response handles
+      (walk/stringify-keys)
       (set/rename-keys {:xt/id :_id})))
 
-;; TODO: should schemas enforce additionalProperties=false?
-;; TODO: should we ensure schemas do not break core fields like id?
-(def type-schema {"type" "object"
-                  "properties" {"_id" {"type" "string"
-                                       "pattern" "^type\\/.*"}
-                                "schema" {"type" "object"}},
-                  "required" ["_id", "schema"]
-                  "additionalProperties" false})
+(defn- uri-parts [uri]
+  (str/split (str/replace-first uri #"/" "") #"/"))
 
 ;; TODO: generalize create-type and create-record?
 ;; TODO: check that type with id does not already exist. also check for "type/type"
+;; TODO: should schemas enforce additionalProperties=false?
+;; TODO: should we ensure schemas do not break core fields like id?
 (defn create-type [xtdb-client record]
   (let [validation (jinx/validate
                     record
@@ -56,11 +59,12 @@
            :body {:message (str "Failed validation: " e)}})))))
 
 (defn create-record [xtdb-client type record]
-  (let [type-record (xt/entity (xt/db xtdb-client) (str "type/" type))]
-    (if (nil? type-record)
+  (let [xt-type-record (xt/entity (xt/db xtdb-client) (str "type/" type))]
+    (if (nil? xt-type-record)
       {:status 404
        :body {:message (str "Type not found: " type)}}
-      (let [validation (jinx/validate
+      (let [type-record (to-rest xt-type-record)
+            validation (jinx/validate
                         record
                         (jinx/schema (get type-record "schema")))]
         (if (not (:valid? validation))
@@ -78,24 +82,28 @@
   (if (nil? (:body req))
     {:status 400
      :body {:message "'body' is required"}}
-    (let [uri-parts (str/split (str/replace-first (:uri req) #"/" "") #"/")]
-      (if (not= (count uri-parts) 1)
+    (let [parts (uri-parts (:uri req))]
+      (if (not= (count parts) 1)
         {:status 400
          :body {:message "Invalid type in uri"}}
-        (let [type (first uri-parts)
+        (let [type (first parts)
               record (:body req)]
           (case type
             "type" (create-type xtdb-client record)
             (create-record xtdb-client type record)))))))
 
 (defn get-handler [xtdb-client req]
-  ;; TODO: validate uri
-  (let [id (str/replace-first (:uri req) #"/" "")
-        xt-record (xt/entity (xt/db xtdb-client) id)]
-    (if (nil? xt-record)
-      {:status 404
-       :body {:message "Not Found"}}
-      (ring-response/response (to-rest xt-record)))))
+  (let [parts (uri-parts (:uri req))]
+    (if (not= (count parts) 2)
+      {:status 400
+       :body {:message "Invalid uri"}}
+      (let [type (first parts)
+            id (second parts)
+            xt-record (xt/entity (xt/db xtdb-client) (str type "/" id))]
+        (if (nil? xt-record)
+          {:status 404
+           :body {:message "Not Found"}}
+          (ring-response/response (to-rest xt-record)))))))
 
 (defn handler [xtdb-client req]
   (let [req (if (is-empty-body? (:body req))
