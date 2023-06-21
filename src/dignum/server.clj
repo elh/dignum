@@ -68,11 +68,11 @@
        :body {:message "'_name' must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
 
       (= (get record "_name") "collections/collections")
-      {:status 403
+      {:status 409
        :body {:message "Cannot create or update 'collections/collections'"}}
 
       (some? (xt/entity (xt/db xtdb-node) (get record "_name")))
-      {:status 403
+      {:status 409
        :body {:message (str "Collection already exists: " (get record "_name"))}}
 
       :else
