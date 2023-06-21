@@ -10,4 +10,5 @@
   :main ^:skip-aot dignum.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
-                       :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}})
+                       :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}}
+  :plugins [[lein-exec "0.3.7"]])
