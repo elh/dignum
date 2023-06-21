@@ -28,10 +28,13 @@
 (defn- log [m]
   (println m)) ;; or print JSON?
 
-;; hack. I expected wrap-json-body to handle this for us
+;; hack: I expected wrap-json-body to handle this for us
 (defn- is-empty-body? [body]
   (or (nil? body)
       (= (.getName (type body)) "org.eclipse.jetty.server.HttpInputOverHTTP")))
+
+(defn- uri-parts [uri]
+  (str/split (str/replace-first uri #"/" "") #"/"))
 
 (defn- ->xtdb-record [record]
   (-> record
@@ -43,10 +46,7 @@
       (set/rename-keys {:xt/id :_name})
       (walk/stringify-keys)))
 
-(defn- uri-parts [uri]
-  (str/split (str/replace-first uri #"/" "") #"/"))
-
-(defn transact-sync [node data]
+(defn xt-transact [node data]
   (xt/await-tx node (xt/submit-tx node data)))
 
 ;; user-provided schemas only validate non-underscore, non-system fields
@@ -80,13 +80,15 @@
        :body {:message (str "Collection already exists: " (get record "_name"))}}
 
       :else
-      (try
-        (jinx/schema (get record "schema")) ;; exception thrown if schema is invalid
-        (transact-sync xtdb-node [[::xt/put (->xtdb-record record)]])
-        (ring-response/response record)
-        (catch Exception e
-          {:status 400
-           :body {:message (str "Invalid schema: " e)}})))))
+      (let [validation-err (try (jinx/schema (get record "schema")) nil
+                                (catch Exception e
+                                  {:status 400
+                                   :body {:message (str "Invalid schema: " e)}}))]
+        (if (nil? validation-err)
+          (do
+            (xt-transact xtdb-node [[::xt/put (->xtdb-record record)]])
+            (ring-response/response record))
+          validation-err)))))
 
 (defn create-record [xtdb-node collection-id record]
   (let [record (-> record
@@ -103,8 +105,8 @@
         (if (not (:valid? validation))
           {:status 400
            :body {:message (str "Failed collection resource validation: " (:errors validation))}}
-          (let [tx (xt/submit-tx xtdb-node [[::xt/put (->xtdb-record record)]])]
-            (xt/await-tx xtdb-node tx)
+          (do
+            (xt-transact xtdb-node [[::xt/put (->xtdb-record record)]])
             (ring-response/response record)))))))
 
 (defn create-handler [xtdb-node req]
