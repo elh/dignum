@@ -10,10 +10,10 @@
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
-;; TODO: add tests
 ;; TODO: implement list
 ;; TODO: implement PUT
 ;; TODO: implement DELETE
+;; TODO: prevent users from setting system fields
 ;; TODO: document
 ;; TODO: custom hooks OR wrap server. add custom logic
 ;; TODO: do more transactionally?
@@ -30,7 +30,8 @@
 
 ;; hack. I expected wrap-json-body to handle this for us
 (defn- is-empty-body? [body]
-  (= (.getName (type body)) "org.eclipse.jetty.server.HttpInputOverHTTP"))
+  (or (nil? body)
+      (= (.getName (type body)) "org.eclipse.jetty.server.HttpInputOverHTTP")))
 
 (defn- ->xtdb-record [record]
   (-> record
@@ -93,8 +94,8 @@
                    (assoc "_name" (str collection-id "/" (.toString (java.util.UUID/randomUUID)))))
         xt-collection (xt/entity (xt/db xtdb-node) (str "collections/" collection-id))]
     (if (nil? xt-collection)
-      {:status 404
-       :body {:message (str "Collection not found: " collection-id)}}
+      {:status 400
+       :body {:message (str "Collection does not exist: " collection-id)}}
       (let [collection (->rest-record xt-collection)
             validation (jinx/validate
                         (remove-underscore-keys record)
