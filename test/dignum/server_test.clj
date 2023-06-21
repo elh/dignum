@@ -1,6 +1,6 @@
-(ns dignum.core-test
+(ns dignum.server-test
   (:require [clojure.test :refer :all]
-            [dignum.core :refer :all]))
+            [dignum.server :refer :all]))
 
 (deftest a-test
   (testing "dumb nop"

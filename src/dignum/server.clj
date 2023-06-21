@@ -1,4 +1,4 @@
-(ns dignum.core
+(ns dignum.server
   (:gen-class)
   (:require [clojure.walk :as walk]
             [clojure.set :as set]
@@ -11,9 +11,14 @@
             [juxt.jinx-alpha :as jinx]))
 
 ;; TODO: add tests
+;; TODO: implement list
 ;; TODO: implement PUT
 ;; TODO: implement DELETE
 ;; TODO: document
+;; TODO: custom hooks OR wrap server. add custom logic
+;; TODO: do more transactionally?
+;; TODO: parent field?
+;; TODO: created and updated timestamps?
 
 (def collections-schema {"type" "object"
                          "properties" {"schema" {"type" "object"}},
@@ -27,12 +32,12 @@
 (defn- is-empty-body? [body]
   (= (.getName (type body)) "org.eclipse.jetty.server.HttpInputOverHTTP"))
 
-(defn- to-xtdb [record]
+(defn- ->xtdb-record [record]
   (-> record
       (walk/keywordize-keys)
       (set/rename-keys {:_name :xt/id})))
 
-(defn- to-rest [xt-record]
+(defn- ->rest-record [xt-record]
   (-> xt-record
       (set/rename-keys {:xt/id :_name})
       (walk/stringify-keys)))
@@ -74,10 +79,10 @@
       (try
         ;; exception thrown if schema is invalid
         (jinx/schema (get record "schema"))
-        (let [xt-record (to-xtdb record)
+        (let [xt-record (->xtdb-record record)
               tx (xt/submit-tx xtdb-node [[::xt/put xt-record]])]
           (xt/await-tx xtdb-node tx)
-          (ring-response/response (to-rest xt-record)))
+          (ring-response/response (->rest-record xt-record)))
         (catch Exception e
           {:status 400
            :body {:message (str "Invalid schema: " e)}})))))
@@ -90,14 +95,14 @@
     (if (nil? xt-collection)
       {:status 404
        :body {:message (str "Collection not found: " collection-id)}}
-      (let [collection (to-rest xt-collection)
+      (let [collection (->rest-record xt-collection)
             validation (jinx/validate
                         (remove-underscore-keys record)
                         (jinx/schema (get collection "schema")))]
         (if (not (:valid? validation))
           {:status 400
            :body {:message (str "Failed collection resource validation: " (:errors validation))}}
-          (let [tx (xt/submit-tx xtdb-node [[::xt/put (to-xtdb record)]])]
+          (let [tx (xt/submit-tx xtdb-node [[::xt/put (->xtdb-record record)]])]
             (xt/await-tx xtdb-node tx)
             (ring-response/response record)))))))
 
@@ -126,7 +131,7 @@
         (if (nil? xt-record)
           {:status 404
            :body {:message "Not Found"}}
-          (ring-response/response (to-rest xt-record)))))))
+          (ring-response/response (->rest-record xt-record)))))))
 
 (defn handler [xtdb-node req]
   (let [req (if (is-empty-body? (:body req))

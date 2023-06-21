@@ -7,7 +7,7 @@
                  [ring/ring-json "0.5.1"]
                  [com.xtdb/xtdb-http-client "1.23.3"]
                  [jinx "0.1.6"]]
-  :main ^:skip-aot dignum.core
+  :main ^:skip-aot dignum.server
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
                        :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}}
