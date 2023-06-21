@@ -15,36 +15,21 @@
                                                   (throw (Exception. "set up create failed")))
                                                 (handler node (->request coll))))
                                      res-status)
-        "success" 200
-        {"_name" "collections/users"
-         "schema" {"type" "object"}}
-
-        "missing schema" 400
-        {"_name" "collections/users"}
-
-        "additional field" 400
-        {"_name" "collections/users"
-         "schema" {"type" "object"}
-         "other-field" "not allowed"}
-
-        "missing _name" 400
-        {"schema" {"type" "object"}}
-
-        "invalid _name w/o 'collections/' prefix" 400
-        {"_name" "users"
-         "schema" {"type" "object"}}
-
-        "cannot edit collections/collections" 409
-        {"_name" "collections/collections"
-         "schema" {"type" "object"}}
-
-        "cannot create collection that already exists" 409
-        {"_name" "collections/teams"
-         "schema" {"type" "object"}}
-
-        "schema is invalid" 400
-        {"_name" "collections/users"
-         "schema" {"type" "invalid-schema"}}))))
+        "success" 200 {"_name" "collections/users"
+                       "schema" {"type" "object"}}
+        "missing schema" 400 {"_name" "collections/users"}
+        "additional field" 400 {"_name" "collections/users"
+                                "schema" {"type" "object"}
+                                "other-field" "not allowed"}
+        "missing _name" 400 {"schema" {"type" "object"}}
+        "invalid _name w/o 'collections/' prefix" 400 {"_name" "users"
+                                                       "schema" {"type" "object"}}
+        "cannot edit collections/collections" 409 {"_name" "collections/collections"
+                                                   "schema" {"type" "object"}}
+        "cannot create collection that already exists" 409 {"_name" "collections/teams"
+                                                            "schema" {"type" "object"}}
+        "schema is invalid" 400 {"_name" "collections/users"
+                                 "schema" {"type" "invalid-schema"}}))))
 
 (deftest create-record-test
   (let [coll {"_name" "collections/users"
@@ -72,21 +57,22 @@
               {:uri uri
                :request-method :post
                :body body})]
-      (are [desc res-status uri-fn] (with-open [node (xt/start-node {})]
-                                      (let [coll-res (handler node (->request "/collections" coll))
-                                            rec-res (handler node (->request "/users" rec))]
-                                        (when (not= 200 (:status coll-res))
-                                          (throw (Exception. "setting up collection failed")))
-                                        (when (not= 200 (:status rec-res))
-                                          (throw (Exception. "setting up record failed")))
-                                        (= (:status (handler node {:uri (uri-fn (get-in coll-res [:body "_name"])
-                                                                                (get-in rec-res [:body "_name"]))
-                                                                   :request-method :get
-                                                                   :body nil}))
-                                           res-status)))
-        "get existing collection" 200 (fn [coll-name _] (str "/" coll-name))
-        "get existing collection" 200 (fn [_ rec-name] (str "/" rec-name))
-        "invalid uri" 400 (fn [_ _] "/asdf")
-        "nonexistent collection" 404 (fn [_ _] "/collection/dne")
-        "nonexistent record" 404 (fn [_ _] "/users/asdf")
-        "nonexistent collection's record" 404 (fn [_ _] "/dne/dne")))))
+      (with-open [node (xt/start-node {})]
+        (let [coll-res (handler node (->request "/collections" coll))
+              rec-res (handler node (->request "/users" rec))]
+          (when (not= 200 (:status coll-res))
+            (throw (Exception. "setting up collection failed")))
+          (when (not= 200 (:status rec-res))
+            (throw (Exception. "setting up record failed")))
+          (are [desc res-status uri-fn]
+               (= (:status (handler node {:uri (uri-fn (get-in coll-res [:body "_name"])
+                                                       (get-in rec-res [:body "_name"]))
+                                          :request-method :get
+                                          :body nil}))
+                  res-status)
+            "get existing collection" 200 (fn [coll-name _] (str "/" coll-name))
+            "get existing collection" 200 (fn [_ rec-name] (str "/" rec-name))
+            "invalid uri" 400 (fn [_ _] "/asdf")
+            "nonexistent collection" 404 (fn [_ _] "/collection/dne")
+            "nonexistent record" 404 (fn [_ _] "/users/asdf")
+            "nonexistent collection's record" 404 (fn [_ _] "/dne/dne")))))))
