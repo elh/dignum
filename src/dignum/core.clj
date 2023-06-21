@@ -1,4 +1,4 @@
-(ns dignum.server
+(ns dignum.core
   (:gen-class)
   (:require [clojure.walk :as walk]
             [clojure.set :as set]

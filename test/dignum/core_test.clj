@@ -1,6 +1,6 @@
-(ns dignum.server-test
+(ns dignum.core-test
   (:require [clojure.test :refer :all]
-            [dignum.server :refer :all]
+            [dignum.core :refer :all]
             [xtdb.api :as xt]))
 
 (deftest create-collection-test
