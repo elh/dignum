@@ -15,10 +15,10 @@
 ;; TODO: implement DELETE
 ;; TODO: document
 
-(def type-schema {"type" "object"
-                  "properties" {"schema" {"type" "object"}},
-                  "required" ["schema"]
-                  "additionalProperties" false})
+(def collections-schema {"type" "object"
+                         "properties" {"schema" {"type" "object"}},
+                         "required" ["schema"]
+                         "additionalProperties" false})
 
 (defn- log [m]
   (println m))
@@ -40,35 +40,35 @@
 (defn- uri-parts [uri]
   (str/split (str/replace-first uri #"/" "") #"/"))
 
-;; type schemas only validate non-underscore, non-system fields
+;; user-provided schemas only validate non-underscore, non-system fields
 (defn- remove-underscore-keys [m]
   (apply dissoc m (filter #(str/starts-with? % "_") (keys m))))
 
-(defn create-type [xtdb-node record]
-  (let [record (assoc record "_type" "type/type")
+(defn create-collection [xtdb-node record]
+  (let [record (assoc record "_collection" "collections/collections")
         validation (jinx/validate
                     (remove-underscore-keys record)
-                    (jinx/schema type-schema))]
+                    (jinx/schema collections-schema))]
     (cond
       (not (:valid? validation))
       {:status 400
-       :body {:message (str "Failed validation: " (:errors validation))}}
+       :body {:message (str "Failed collection resource validation: " (:errors validation))}}
 
       (not (contains? record "_name"))
       {:status 400
-       :body {:message "'_name' is required and must be of the form 'type/<id>'"}}
+       :body {:message "'_name' is required and must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
 
-      (not (re-matches #"type/\w+" (get record "_name")))
+      (not (re-matches #"collections/\w+" (get record "_name")))
       {:status 400
-       :body {:message "'_name' must be of the form 'type/<id>'"}}
+       :body {:message "'_name' must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
 
-      (= (get record "_name") "type/type")
+      (= (get record "_name") "collections/collections")
       {:status 403
-       :body {:message "Cannot create or update 'type/type'"}}
+       :body {:message "Cannot create or update 'collections/collections'"}}
 
       (some? (xt/entity (xt/db xtdb-node) (get record "_name")))
       {:status 403
-       :body {:message (str "Type already exists: " (get record "_name"))}}
+       :body {:message (str "Collection already exists: " (get record "_name"))}}
 
       :else
       (try
@@ -80,23 +80,23 @@
           (ring-response/response (to-rest xt-record)))
         (catch Exception e
           {:status 400
-           :body {:message (str "Failed validation: " e)}})))))
+           :body {:message (str "Invalid schema: " e)}})))))
 
-(defn create-record [xtdb-node type record]
+(defn create-record [xtdb-node collection-id record]
   (let [record (-> record
-                   (assoc "_type" (str "type/" type))
-                   (assoc "_name" (str type "/" (.toString (java.util.UUID/randomUUID)))))
-        xt-type-record (xt/entity (xt/db xtdb-node) (str "type/" type))]
-    (if (nil? xt-type-record)
+                   (assoc "_collection" (str "collections/" collection-id))
+                   (assoc "_name" (str collection-id "/" (.toString (java.util.UUID/randomUUID)))))
+        xt-collection (xt/entity (xt/db xtdb-node) (str "collections/" collection-id))]
+    (if (nil? xt-collection)
       {:status 404
-       :body {:message (str "Type not found: " type)}}
-      (let [type-record (to-rest xt-type-record)
+       :body {:message (str "Collection not found: " collection-id)}}
+      (let [collection (to-rest xt-collection)
             validation (jinx/validate
                         (remove-underscore-keys record)
-                        (jinx/schema (get type-record "schema")))]
+                        (jinx/schema (get collection "schema")))]
         (if (not (:valid? validation))
           {:status 400
-           :body {:message (str "Failed validation: " (:errors validation))}}
+           :body {:message (str "Failed collection resource validation: " (:errors validation))}}
           (let [tx (xt/submit-tx xtdb-node [[::xt/put (to-xtdb record)]])]
             (xt/await-tx xtdb-node tx)
             (ring-response/response record)))))))
@@ -108,21 +108,21 @@
     (let [parts (uri-parts (:uri req))]
       (if (not= (count parts) 1)
         {:status 400
-         :body {:message "Invalid type in uri"}}
-        (let [type (first parts)
+         :body {:message "Invalid collection id in url"}}
+        (let [collection-id (first parts)
               record (:body req)]
-          (case type
-            "type" (create-type xtdb-node record)
-            (create-record xtdb-node type record)))))))
+          (case collection-id
+            "collections" (create-collection xtdb-node record)
+            (create-record xtdb-node collection-id record)))))))
 
 (defn get-handler [xtdb-node req]
   (let [parts (uri-parts (:uri req))]
     (if (not= (count parts) 2)
       {:status 400
-       :body {:message "Invalid uri"}}
-      (let [type (first parts)
+       :body {:message "Invalid url"}}
+      (let [collection-id (first parts)
             id (second parts)
-            xt-record (xt/entity (xt/db xtdb-node) (str type "/" id))]
+            xt-record (xt/entity (xt/db xtdb-node) (str collection-id "/" id))]
         (if (nil? xt-record)
           {:status 404
            :body {:message "Not Found"}}
