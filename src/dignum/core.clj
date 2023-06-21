@@ -26,7 +26,7 @@
                          "additionalProperties" false})
 
 (defn- log [m]
-  (println m))
+  (println m)) ;; or print JSON?
 
 ;; hack. I expected wrap-json-body to handle this for us
 (defn- is-empty-body? [body]
@@ -45,6 +45,9 @@
 
 (defn- uri-parts [uri]
   (str/split (str/replace-first uri #"/" "") #"/"))
+
+(defn transact-sync [node data]
+  (xt/await-tx node (xt/submit-tx node data)))
 
 ;; user-provided schemas only validate non-underscore, non-system fields
 (defn- remove-underscore-keys [m]
@@ -78,12 +81,9 @@
 
       :else
       (try
-        ;; exception thrown if schema is invalid
-        (jinx/schema (get record "schema"))
-        (let [xt-record (->xtdb-record record)
-              tx (xt/submit-tx xtdb-node [[::xt/put xt-record]])]
-          (xt/await-tx xtdb-node tx)
-          (ring-response/response (->rest-record xt-record)))
+        (jinx/schema (get record "schema")) ;; exception thrown if schema is invalid
+        (transact-sync xtdb-node [[::xt/put (->xtdb-record record)]])
+        (ring-response/response record)
         (catch Exception e
           {:status 400
            :body {:message (str "Invalid schema: " e)}})))))
