@@ -3,6 +3,8 @@
             [dignum.core :refer :all]
             [xtdb.api :as xt]))
 
+;; TODO: rewrite all tests for better output. `is`/`are` form must be function call, not macro. just manually manage the
+;; cases and use `is`?
 (deftest create-collection-test
   (let [prior-coll {"_name" "collections/teams"
                     "schema" {"type" "object"}}]
@@ -112,6 +114,46 @@
         "fails collection validation" 400 "/collections/users"
         {"schema" {"type" "bad"}}
         nil))))
+
+(deftest delete-record-test
+  (let [coll {"_name" "collections/users"
+              "schema" {"type" "object"
+                        "properties" {"name" {"type" "string"}}}}
+        orig-record {"name" "alice"}]
+    (letfn [(->request [uri method body]
+              {:uri uri
+               :request-method method
+               :body body})]
+      (are [desc res-status uri-fn]
+           (with-open [node (xt/start-node {})]
+             (let [coll-res (handler node (->request "/collections" :post coll))
+                   rec-res (handler node (->request "/users" :post orig-record))]
+               (when (or (not= 200 (:status coll-res))
+                         (not= 200 (:status rec-res)))
+                 (throw (Exception. "setting up fixtures failed")))
+               (let [res (handler node (->request (uri-fn (get-in rec-res [:body "_name"])) :delete nil))]
+                 (= (:status res)
+                    res-status))))
+        "success" 200 (fn [rec-name] (str "/" rec-name))
+        "nonexistent record" 404 (fn [_] "/users/dne")))))
+
+(deftest delete-collection-test
+  (let [coll {"_name" "collections/users"
+              "schema" {"type" "object"
+                        "properties" {"name" {"type" "string"}}}}]
+    (letfn [(->request [uri method body]
+              {:uri uri
+               :request-method method
+               :body body})]
+      (are [desc res-status uri]
+           (with-open [node (xt/start-node {})]
+             (let [coll-res (handler node (->request "/collections" :post coll))]
+               (when (not= 200 (:status coll-res))
+                 (throw (Exception. "setting up fixtures failed")))
+               (let [res (handler node (->request uri :delete nil))]
+                 (= (:status res)
+                    res-status))))
+        "unsupported" 501 (str "/" (get coll "_name"))))))
 
 (deftest get-test
   (let [coll {"_name" "collections/users"

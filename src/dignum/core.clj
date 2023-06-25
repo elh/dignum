@@ -10,10 +10,7 @@
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
-;; TODO: rename record to resource?
-;; TODO: implement DELETE
 ;; TODO: prevent users from setting system fields
-;; TODO: document
 ;; TODO: custom hooks OR wrap server. add custom logic
 ;; TODO: do more transactionally? use transaction function for validation?
 ;; TODO: parent field?
@@ -134,11 +131,11 @@
     (let [parts (uri-parts (:uri req))]
       (if (not= (count parts) 2)
         {:status 400
-         :body {:message "Invalid resrouce name in url"}}
+         :body {:message "Invalid resource name in url"}}
         (let [collection-id (first parts)
               record-id (second parts)
               record (:body req)
-              exists? (some? (xt/entity (xt/db xtdb-node) (str  collection-id "/" record-id)))]
+              exists? (some? (xt/entity (xt/db xtdb-node) (str collection-id "/" record-id)))]
           (if (not exists?)
             {:status 404
              :body {:message (str "Not Found")}}
@@ -148,6 +145,24 @@
                                                (assoc "_collection" "collections/collections")
                                                (assoc "_name" (str collection-id "/" record-id))))
               (create-record xtdb-node collection-id record-id record))))))))
+
+(defn delete-handler [xtdb-node req]
+  (let [parts (uri-parts (:uri req))]
+    (if (not= (count parts) 2)
+      {:status 400
+       :body {:message "Invalid resource name in url"}}
+      (let [collection-id (first parts)
+            record-id (second parts)
+            exists? (some? (xt/entity (xt/db xtdb-node) (str collection-id "/" record-id)))]
+        (if (not exists?)
+          {:status 404
+           :body {:message (str "Not Found")}}
+          (if (= collection-id "collections")
+            {:status 501
+             :body {:message "Deleting collections is not supported"}}
+            (do
+              (xt-transact xtdb-node [[::xt/delete (str collection-id "/" record-id)]])
+              (ring-response/response {}))))))))
 
 (defn get-record [xtdb-node collection-id record-id]
   (let [xt-record (xt/entity (xt/db xtdb-node) (str collection-id "/" record-id))]
@@ -186,6 +201,7 @@
     (case (:request-method req)
       :post (create-handler xtdb-node req)
       :put (put-handler xtdb-node req)
+      :delete (delete-handler xtdb-node req)
       :get (get-handler xtdb-node req)
       {:status 501
        :body {:message "Unimplemented"}})))
