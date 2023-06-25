@@ -10,7 +10,7 @@
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
-;; TODO: implement list
+;; TODO: rename record to resource?
 ;; TODO: implement PUT
 ;; TODO: implement DELETE
 ;; TODO: prevent users from setting system fields
@@ -34,6 +34,8 @@
       (= (.getName (type body)) "org.eclipse.jetty.server.HttpInputOverHTTP")))
 
 (defn- uri-parts [uri]
+  (when (not (str/starts-with? uri "/"))
+    (throw (Exception. "uri must start with /")))
   (str/split (str/replace-first uri #"/" "") #"/"))
 
 (defn- ->xtdb-record [record]
@@ -50,7 +52,7 @@
   (xt/await-tx node (xt/submit-tx node data)))
 
 ;; user-provided schemas only validate non-underscore, non-system fields
-(defn- remove-underscore-keys [m]
+(defn remove-underscore-keys [m]
   (apply dissoc m (filter #(str/starts-with? % "_") (keys m))))
 
 (defn create-collection [xtdb-node record]
@@ -123,18 +125,34 @@
             "collections" (create-collection xtdb-node record)
             (create-record xtdb-node collection-id record)))))))
 
+(defn get-record [xtdb-node collection-id record-id]
+  (let [xt-record (xt/entity (xt/db xtdb-node) (str collection-id "/" record-id))]
+    (if (nil? xt-record)
+      {:status 404
+       :body {:message "Not Found"}}
+      (ring-response/response (->rest-record xt-record)))))
+
+(defn list-records [xtdb-node collection-id]
+  (let [xtdb (xt/db xtdb-node)]
+    (if (and (not= collection-id "collections") ;; no literal collections collection record right now
+             (nil? (xt/entity xtdb (str "collections/" collection-id))))
+      {:status 404
+       :body {:message (str "Collection does not exist: " (str "collections/" collection-id))}}
+      (let [q-res (xt/q xtdb
+                        '{:find [(pull ?v [*])]
+                          :in [c]
+                          :where [[?v :_collection c]]}
+                        (str "collections/" collection-id))]
+        ;; TODO: "resources" or "records"?
+        (ring-response/response {:resources (map #(->rest-record (first %)) q-res)})))))
+
 (defn get-handler [xtdb-node req]
   (let [parts (uri-parts (:uri req))]
-    (if (not= (count parts) 2)
-      {:status 400
-       :body {:message "Invalid url"}}
-      (let [collection-id (first parts)
-            id (second parts)
-            xt-record (xt/entity (xt/db xtdb-node) (str collection-id "/" id))]
-        (if (nil? xt-record)
-          {:status 404
-           :body {:message "Not Found"}}
-          (ring-response/response (->rest-record xt-record)))))))
+            (case (count parts)
+              1 (list-records xtdb-node (first parts))
+              2 (get-record xtdb-node (first parts) (second parts))
+              {:status 400
+               :body {:message "Invalid url"}})))
 
 (defn handler [xtdb-node req]
   (let [req (if (is-empty-body? (:body req))
