@@ -11,12 +11,11 @@
             [juxt.jinx-alpha :as jinx]))
 
 ;; TODO: rename record to resource?
-;; TODO: implement PUT
 ;; TODO: implement DELETE
 ;; TODO: prevent users from setting system fields
 ;; TODO: document
 ;; TODO: custom hooks OR wrap server. add custom logic
-;; TODO: do more transactionally?
+;; TODO: do more transactionally? use transaction function for validation?
 ;; TODO: parent field?
 ;; TODO: created and updated timestamps?
 
@@ -55,47 +54,50 @@
 (defn remove-underscore-keys [m]
   (apply dissoc m (filter #(str/starts-with? % "_") (keys m))))
 
-(defn create-collection [xtdb-node record]
-  (let [record (assoc record "_collection" "collections/collections")
-        validation (jinx/validate
-                    (remove-underscore-keys record)
-                    (jinx/schema collections-schema))]
-    (cond
-      (not (:valid? validation))
-      {:status 400
-       :body {:message (str "Failed collection resource validation: " (:errors validation))}}
+(defn create-collection
+  ([xtdb-node record]
+   (create-collection xtdb-node record false))
+  ([xtdb-node record strict-create]
+   (let [record (assoc record "_collection" "collections/collections")
+         validation (jinx/validate
+                     (remove-underscore-keys record)
+                     (jinx/schema collections-schema))]
+     (cond
+       (not (:valid? validation))
+       {:status 400
+        :body {:message (str "Failed collection resource validation: " (:errors validation))}}
 
-      (not (contains? record "_name"))
-      {:status 400
-       :body {:message "'_name' is required and must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
+       (not (contains? record "_name"))
+       {:status 400
+        :body {:message "'_name' is required and must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
 
-      (not (re-matches #"collections/\w+" (get record "_name")))
-      {:status 400
-       :body {:message "'_name' must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
+       (not (re-matches #"collections/\w+" (get record "_name")))
+       {:status 400
+        :body {:message "'_name' must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
 
-      (= (get record "_name") "collections/collections")
-      {:status 409
-       :body {:message "Cannot create or update 'collections/collections'"}}
+       (= (get record "_name") "collections/collections")
+       {:status 409
+        :body {:message "Cannot create or update 'collections/collections'"}}
 
-      (some? (xt/entity (xt/db xtdb-node) (get record "_name")))
-      {:status 409
-       :body {:message (str "Collection already exists: " (get record "_name"))}}
+       (and strict-create (some? (xt/entity (xt/db xtdb-node) (get record "_name"))))
+       {:status 409
+        :body {:message (str "Collection already exists: " (get record "_name"))}}
 
-      :else
-      (let [validation-err (try (jinx/schema (get record "schema")) nil
-                                (catch Exception e
-                                  {:status 400
-                                   :body {:message (str "Invalid schema: " e)}}))]
-        (if (nil? validation-err)
-          (do
-            (xt-transact xtdb-node [[::xt/put (->xtdb-record record)]])
-            (ring-response/response record))
-          validation-err)))))
+       :else
+       (let [validation-err (try (jinx/schema (get record "schema")) nil
+                                 (catch Exception e
+                                   {:status 400
+                                    :body {:message (str "Invalid schema: " e)}}))]
+         (if (nil? validation-err)
+           (do
+             (xt-transact xtdb-node [[::xt/put (->xtdb-record record)]])
+             (ring-response/response record))
+           validation-err))))))
 
-(defn create-record [xtdb-node collection-id record]
+(defn create-record [xtdb-node collection-id record-id record]
   (let [record (-> record
                    (assoc "_collection" (str "collections/" collection-id))
-                   (assoc "_name" (str collection-id "/" (.toString (java.util.UUID/randomUUID)))))
+                   (assoc "_name" (str collection-id "/" record-id)))
         xt-collection (xt/entity (xt/db xtdb-node) (str "collections/" collection-id))]
     (if (nil? xt-collection)
       {:status 400
@@ -122,8 +124,30 @@
         (let [collection-id (first parts)
               record (:body req)]
           (case collection-id
-            "collections" (create-collection xtdb-node record)
-            (create-record xtdb-node collection-id record)))))))
+            "collections" (create-collection xtdb-node record true)
+            (create-record xtdb-node collection-id (.toString (java.util.UUID/randomUUID)) record)))))))
+
+(defn put-handler [xtdb-node req]
+  (if (nil? (:body req))
+    {:status 400
+     :body {:message "'body' is required"}}
+    (let [parts (uri-parts (:uri req))]
+      (if (not= (count parts) 2)
+        {:status 400
+         :body {:message "Invalid resrouce name in url"}}
+        (let [collection-id (first parts)
+              record-id (second parts)
+              record (:body req)
+              exists? (some? (xt/entity (xt/db xtdb-node) (str  collection-id "/" record-id)))]
+          (if (not exists?)
+            {:status 404
+             :body {:message (str "Not Found")}}
+            (if (= collection-id "collections")
+              ;; TODO: schema correctness for existing resources? migration approach?
+              (create-collection xtdb-node (-> record
+                                               (assoc "_collection" "collections/collections")
+                                               (assoc "_name" (str collection-id "/" record-id))))
+              (create-record xtdb-node collection-id record-id record))))))))
 
 (defn get-record [xtdb-node collection-id record-id]
   (let [xt-record (xt/entity (xt/db xtdb-node) (str collection-id "/" record-id))]
@@ -161,6 +185,7 @@
     (log {:msg "request received" :req req})
     (case (:request-method req)
       :post (create-handler xtdb-node req)
+      :put (put-handler xtdb-node req)
       :get (get-handler xtdb-node req)
       {:status 501
        :body {:message "Unimplemented"}})))

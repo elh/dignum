@@ -39,14 +39,79 @@
               {:uri uri
                :request-method :post
                :body body})]
-      (are [desc res-status uri record] (= (:status (with-open [node (xt/start-node {})]
-                                                      (when (not= 200 (:status (handler node (->request "/collections" coll))))
-                                                        (throw (Exception. "setting up collection failed")))
-                                                      (handler node (->request uri record))))
-                                           res-status)
-        "success" 200 "/users" {"name" "alice"}
-        "nonexistent collection" 400 "/animals" {"name" "alice"}
-        "fails collection validation" 400 "/users" {"name" 30}))))
+      (are [desc res-status uri record expect-rec]
+           (with-open [node (xt/start-node {})]
+             (when (not= 200 (:status (handler node (->request "/collections" coll))))
+               (throw (Exception. "setting up collection failed")))
+             (let [res (handler node (->request uri record))]
+               (and (= (:status res)
+                       res-status)
+                    (or (nil? expect-rec)
+                        (= (remove-underscore-keys (:body res)) (remove-underscore-keys expect-rec))))))
+        "success" 200 "/users" {"name" "alice"} {"name" "alice"}
+        "nonexistent collection" 400 "/animals" {"name" "alice"} nil
+        "fails collection validation" 400 "/users" {"name" 30} nil))))
+
+(deftest update-record-test
+  (let [coll {"_name" "collections/users"
+              "schema" {"type" "object"
+                        "properties" {"name" {"type" "string"}}}}
+        orig-record {"name" "alice"}]
+    (letfn [(->request [uri method body]
+              {:uri uri
+               :request-method method
+               :body body})]
+      (are [desc res-status uri-fn new-record expect-rec]
+           (with-open [node (xt/start-node {})]
+             (let [coll-res (handler node (->request "/collections" :post coll))
+                   rec-res (handler node (->request "/users" :post orig-record))]
+               (when (or (not= 200 (:status coll-res))
+                         (not= 200 (:status rec-res)))
+                 (throw (Exception. "setting up fixtures failed")))
+               (let [res (handler node (->request (uri-fn (get-in rec-res [:body "_name"])) :put new-record))]
+                 (and (= (:status res)
+                         res-status)
+                      (or (nil? expect-rec)
+                          (= (remove-underscore-keys (:body res)) (remove-underscore-keys expect-rec)))))))
+        "success" 200 (fn [rec-name] (str "/" rec-name)) {"name" "alison"} {"name" "alison"}
+        "nonexistent record" 404 (fn [_] "/users/dne") {"name" "alison"} nil
+        "fails collection validation" 400 (fn [rec-name] (str "/" rec-name)) {"name" 30} nil))))
+
+(deftest update-collection-test
+  (let [coll {"_name" "collections/users"
+              "schema" {"type" "object"
+                        "properties" {"name" {"type" "string"}}}}]
+    (letfn [(->request [uri method body]
+              {:uri uri
+               :request-method method
+               :body body})]
+      (are [desc res-status uri new-record expect-rec]
+           (with-open [node (xt/start-node {})]
+             (let [coll-res (handler node (->request "/collections" :post coll))]
+               (when (not= 200 (:status coll-res))
+                 (throw (Exception. "setting up fixtures failed")))
+               (let [res (handler node (->request uri :put new-record))]
+                 (and (= (:status res)
+                         res-status)
+                      (or (nil? expect-rec)
+                          (= (remove-underscore-keys (:body res)) (remove-underscore-keys expect-rec)))))))
+        "success" 200 "/collections/users"
+        {"schema" {"type" "object"
+                   "properties" {"name" {"type" "string"}
+                                 "age" {"type" "number"}}}}
+        {"schema" {"type" "object"
+                   "properties" {"name" {"type" "string"}
+                                 "age" {"type" "number"}}}}
+
+        "nonexistent collection" 404 "/collections/dne"
+        {"schema" {"type" "object"
+                   "properties" {"name" {"type" "string"}
+                                 "age" {"type" "number"}}}}
+        nil
+
+        "fails collection validation" 400 "/collections/users"
+        {"schema" {"type" "bad"}}
+        nil))))
 
 (deftest get-test
   (let [coll {"_name" "collections/users"
@@ -71,12 +136,12 @@
                          expect-res-status)
                       (or (nil? expect-res-rec)
                           (= (remove-underscore-keys (:body res)) (remove-underscore-keys expect-res-rec)))))
-                 "get existing collection record" (fn [_] (str "/" (get coll "_name"))) 200 coll
-                 "get existing non-collection record" (fn [rec-name] (str "/" rec-name)) 200 rec
-                 "invalid uri" (fn [_] "/asdf/sdf/fe") 400 nil
-                 "nonexistent collection" (fn [_] "/collection/dne") 404 nil
-                 "nonexistent record" (fn [_] "/users/asdf") 404 nil
-                 "nonexistent collection's record" (fn [_] "/dne/dne") 404 nil))))))
+            "get existing collection record" (fn [_] (str "/" (get coll "_name"))) 200 coll
+            "get existing non-collection record" (fn [rec-name] (str "/" rec-name)) 200 rec
+            "invalid uri" (fn [_] "/asdf/sdf/fe") 400 nil
+            "nonexistent collection" (fn [_] "/collection/dne") 404 nil
+            "nonexistent record" (fn [_] "/users/asdf") 404 nil
+            "nonexistent collection's record" (fn [_] "/dne/dne") 404 nil))))))
 
 (deftest list-test
   (let [colls [{"_name" "collections/users"
@@ -87,9 +152,9 @@
                           "properties" {"name" {"type" "string"}}}}]
         coll-to-recs {"users" [{"name" "alice"} {"name" "bob"}]}]
     (letfn [(->request [uri body]
-              {:uri uri
-               :request-method :post
-               :body body})]
+                       {:uri uri
+                        :request-method :post
+                        :body body})]
       (with-open [node (xt/start-node {})]
         (let [coll-res (map #(handler node (->request "/collections" %)) colls)
               rec-res (map (fn [[coll-id recs]]
@@ -100,17 +165,17 @@
           (when (or (some #(not= 200 (:status %)) coll-res)
                     (some #(some (fn [res] (not= 200 (:status res))) %) rec-res))
             (throw (Exception. "setting up fixtures failed")))
-            (are [desc uri expect-res-status expect-res-recs]
-                 (let [res (handler node {:uri uri
-                                          :request-method :get
-                                          :body nil})]
-                   (and (= (:status res)
-                           expect-res-status)
-                        (or (nil? expect-res-recs)
-                            (= (map #(remove-underscore-keys (:body %)) (:resources res))
-                               (map #(remove-underscore-keys (:body %)) (:resources expect-res-recs))))))
-              "get existing collection records" "/collections" 200 colls
-              "get existing non-collection records" "/users" 200 (get coll-to-recs "users")
-              "collection has no records" "/films" 200 []
-              "invalid uri" "/bad/bad/bad" 400 nil
-              "nonexistent collection" "/dne" 404 nil))))))
+          (are [desc uri expect-res-status expect-res-recs]
+               (let [res (handler node {:uri uri
+                                        :request-method :get
+                                        :body nil})]
+                 (and (= (:status res)
+                         expect-res-status)
+                      (or (nil? expect-res-recs)
+                          (= (map #(remove-underscore-keys (:body %)) (:resources res))
+                             (map #(remove-underscore-keys (:body %)) (:resources expect-res-recs))))))
+            "get existing collection records" "/collections" 200 colls
+            "get existing non-collection records" "/users" 200 (get coll-to-recs "users")
+            "collection has no records" "/films" 200 []
+            "invalid uri" "/bad/bad/bad" 400 nil
+            "nonexistent collection" "/dne" 404 nil))))))
