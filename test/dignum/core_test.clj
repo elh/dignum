@@ -19,6 +19,9 @@
                                      res-status)
         "success" 200 {"_name" "collections/users"
                        "schema" {"type" "object"}}
+        "setting _fields" 400 {"_name" "collections/users"
+                               "_other" "not allowed"
+                               "schema" {"type" "object"}}
         "missing schema" 400 {"_name" "collections/users"}
         "additional field" 400 {"_name" "collections/users"
                                 "schema" {"type" "object"}
@@ -51,6 +54,7 @@
                     (or (nil? expect-rec)
                         (= (remove-underscore-keys (:body res)) (remove-underscore-keys expect-rec))))))
         "success" 200 "/users" {"name" "alice"} {"name" "alice"}
+        "setting _fields" 400 "/users" {"name" "alice" "_other" "not allowed"} nil
         "nonexistent collection" 400 "/animals" {"name" "alice"} nil
         "fails collection validation" 400 "/users" {"name" 30} nil))))
 
@@ -76,6 +80,7 @@
                       (or (nil? expect-rec)
                           (= (remove-underscore-keys (:body res)) (remove-underscore-keys expect-rec)))))))
         "success" 200 (fn [rec-name] (str "/" rec-name)) {"name" "alison"} {"name" "alison"}
+        "setting _fields" 400 (fn [rec-name] (str "/" rec-name)) {"name" "alice" "_other" "not allowed"} nil
         "nonexistent record" 404 (fn [_] "/users/dne") {"name" "alison"} nil
         "fails collection validation" 400 (fn [rec-name] (str "/" rec-name)) {"name" 30} nil))))
 
@@ -104,6 +109,13 @@
         {"schema" {"type" "object"
                    "properties" {"name" {"type" "string"}
                                  "age" {"type" "number"}}}}
+
+        "setting _fields" 400 "/collections/users"
+        {"schema" {"type" "object"
+                   "properties" {"name" {"type" "string"}
+                                 "age" {"type" "number"}}}
+         "_other" "not allowed"}
+        nil
 
         "nonexistent collection" 404 "/collections/dne"
         {"schema" {"type" "object"

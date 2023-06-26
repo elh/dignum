@@ -11,7 +11,6 @@
             [juxt.jinx-alpha :as jinx]))
 
 ;;;; TODOs:
-;; TODO: prevent users from setting system fields
 ;; TODO: support list params
 ;; TODO: can a user add custom logic to the server? via custom hooks? wrap this server? lib v. framework approach?
 ;; TODO: write transactionally? use transaction function for validation? jinx would need to be installed on xtdb node.
@@ -66,6 +65,10 @@
        {:status 400
         :body {:message (str "Failed collection resource validation: " (:errors validation))}}
 
+       (seq (filter #(and (str/starts-with? % "_") (not= % "_name") (not= % "_collection")) (keys record)))
+       {:status 400
+        :body {:message "Cannot create or update system fields"}}
+
        (not (contains? record "_name"))
        {:status 400
         :body {:message "'_name' is required and must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
@@ -105,9 +108,16 @@
             validation (jinx/validate
                         (remove-underscore-keys record)
                         (jinx/schema (get collection "schema")))]
-        (if (not (:valid? validation))
+        (cond
+          (not (:valid? validation))
           {:status 400
            :body {:message (str "Failed collection resource validation: " (:errors validation))}}
+
+          (seq (filter #(and (str/starts-with? % "_") (not= % "_name") (not= % "_collection")) (keys record)))
+          {:status 400
+           :body {:message "Cannot create or update system fields"}}
+
+          :else
           (do
             (xt-transact xtdb-node [[::xt/put (->xtdb-record record)]])
             (ring-response/response record)))))))
