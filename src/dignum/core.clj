@@ -17,8 +17,12 @@
 ;; TODO: writes via JSON Patch or JSON Merge Patch?
 
 (def collections-schema {"type" "object"
-                         "properties" {"schema" {"type" "object"}},
-                         "required" ["schema"]
+                         "properties" {"_collection" {"type" "string"
+                                                      "const" "collections/collections"}
+                                       "_name" {"type" "string"
+                                                "pattern" "^collections/"}
+                                       "schema" {"type" "object"}} ;; this will be validated by jinx instantiation
+                         "required" ["_collection" "_name" "schema"]
                          "additionalProperties" false})
 
 (defn- log [m]
@@ -57,24 +61,12 @@
   ([xtdb-node record strict-create]
    (let [record (assoc record "_collection" "collections/collections")
          validation (jinx/validate
-                     (remove-underscore-keys record)
+                     record
                      (jinx/schema collections-schema))]
      (cond
        (not (:valid? validation))
        {:status 400
         :body {:message (str "Failed collection resource validation: " (:errors validation))}}
-
-       (seq (filter #(and (str/starts-with? % "_") (not= % "_name") (not= % "_collection")) (keys record)))
-       {:status 400
-        :body {:message "Cannot create or update system fields"}}
-
-       (not (contains? record "_name"))
-       {:status 400
-        :body {:message "'_name' is required and must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
-
-       (not (re-matches #"collections/\w+" (get record "_name")))
-       {:status 400
-        :body {:message "'_name' must be of the form 'collections/<id>' where <id> should be plural form of the collection resource type"}}
 
        (= (get record "_name") "collections/collections")
        {:status 409
@@ -182,6 +174,7 @@
        :body {:message "Not Found"}}
       (ring-response/response (->rest-record xt-record)))))
 
+;; pagination? order results? more expressive queries?
 ;; NOTE: only supporting the simplest string equality query param
 (defn list-records [xtdb-node collection-id query-params]
   (let [xtdb (xt/db xtdb-node)]
