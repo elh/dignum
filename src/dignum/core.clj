@@ -55,10 +55,7 @@
 (defn remove-underscore-keys [m]
   (apply dissoc m (filter #(str/starts-with? % "_") (keys m))))
 
-(defn create-collection
-  ([xtdb-node record]
-   (create-collection xtdb-node record false))
-  ([xtdb-node record strict-create]
+(defn create-collection [xtdb-node record]
    (let [record (assoc record "_collection" "collections/collections")
          validation (jinx/validate
                      record
@@ -72,10 +69,6 @@
        {:status 409
         :body {:message "Cannot create or update 'collections/collections'"}}
 
-       (and strict-create (some? (xt/entity (xt/db xtdb-node) (get record "_name"))))
-       {:status 409
-        :body {:message (str "Collection already exists: " (get record "_name"))}}
-
        :else
        (let [validation-err (try (jinx/schema (get record "schema")) nil
                                  (catch Exception e
@@ -85,7 +78,7 @@
            (do
              (xt-transact xtdb-node [[::xt/put (->xtdb-record record)]])
              (ring-response/response record))
-           validation-err))))))
+           validation-err)))))
 
 (defn create-record [xtdb-node collection-id record-id record]
   (let [record (-> record
@@ -124,7 +117,10 @@
         (let [collection-id (first parts)
               record (:body req)]
           (case collection-id
-            "collections" (create-collection xtdb-node record true)
+            "collections" (if (some? (xt/entity (xt/db xtdb-node) (get record "_name")))
+                            {:status 409
+                             :body {:message (str "Collection already exists: " (get record "_name"))}}
+                            (create-collection xtdb-node record))
             (create-record xtdb-node collection-id (.toString (java.util.UUID/randomUUID)) record)))))))
 
 (defn put-handler [xtdb-node req]
