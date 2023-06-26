@@ -59,6 +59,18 @@ curl -X PUT "localhost:3000/users/61c22266-ee21-4ef8-9000-a9e786b3cf59" -H "Cont
 curl -X DELETE "localhost:3000/users/61c22266-ee21-4ef8-9000-a9e786b3cf59" -H "Content-Type: application/json"
 ```
 
+### Usage
+
+Connect to a running XTDB node via `XTDB_URL`. If not provided, we will start with an in-memory node.
+
+```bash
+XTDB_URL="http://localhost:9999" PORT=3000 make run
+
+# development
+make test
+make lint
+```
+
 ### Why?
 
 Built this as a future hacking tool and for learning purposes. I want to:
