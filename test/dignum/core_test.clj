@@ -219,17 +219,19 @@
           (when (or (some #(not= 200 (:status %)) coll-res)
                     (some #(some (fn [res] (not= 200 (:status res))) %) rec-res))
             (throw (Exception. "setting up fixtures failed")))
-          (are [desc uri expect-res-status expect-res-recs]
+          (are [desc uri query-params expect-res-status expect-res-recs]
                (let [res (handler node {:uri uri
                                         :request-method :get
+                                        :query-params query-params
                                         :body nil})]
                  (and (= (:status res)
                          expect-res-status)
                       (or (nil? expect-res-recs)
-                          (= (map #(remove-underscore-keys (:body %)) (:resources res))
-                             (map #(remove-underscore-keys (:body %)) (:resources expect-res-recs))))))
-            "get existing collection records" "/collections" 200 colls
-            "get existing non-collection records" "/users" 200 (get coll-to-recs "users")
-            "collection has no records" "/films" 200 []
-            "invalid uri" "/bad/bad/bad" 400 nil
-            "nonexistent collection" "/dne" 404 nil))))))
+                          (= (set (map remove-underscore-keys (get-in res [:body :resources])))
+                             (set (map remove-underscore-keys expect-res-recs))))))
+            "get existing collection records" "/collections" {} 200 colls
+            "get existing non-collection records" "/users" {} 200 (get coll-to-recs "users")
+            "filter by string query param" "/users" {"name" "alice"} 200 [{"name" "alice"}]
+            "collection has no records" "/films" {} 200 []
+            "invalid uri" "/bad/bad/bad" {} 400 nil
+            "nonexistent collection" "/dne" {} 404 nil))))))

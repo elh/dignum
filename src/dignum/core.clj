@@ -11,7 +11,6 @@
             [juxt.jinx-alpha :as jinx]))
 
 ;;;; TODOs:
-;; TODO: support list params
 ;; TODO: can a user add custom logic to the server? via custom hooks? wrap this server? lib v. framework approach?
 ;; TODO: write transactionally? use transaction function for validation? jinx would need to be installed on xtdb node.
 ;; TODO: other conventional fields: parent field? created and updated timestamps?
@@ -183,17 +182,20 @@
        :body {:message "Not Found"}}
       (ring-response/response (->rest-record xt-record)))))
 
-(defn list-records [xtdb-node collection-id]
+;; NOTE: only supporting the simplest string equality query param
+(defn list-records [xtdb-node collection-id query-params]
   (let [xtdb (xt/db xtdb-node)]
     (if (and (not= collection-id "collections") ;; no literal collections collection record right now
              (nil? (xt/entity xtdb (str "collections/" collection-id))))
       {:status 404
        :body {:message (str "Collection does not exist: " (str "collections/" collection-id))}}
-      ;; no list params right now...
-      (let [q-res (xt/q xtdb
-                        '{:find [(pull ?v [*])]
-                          :in [c]
-                          :where [[?v :_collection c]]}
+      (let [q-where (mapv (fn [[k v]] ['?v (keyword k) v]) query-params)
+            where ['[?v :_collection c]]
+            where (into [] (concat where q-where))
+            q-res (xt/q xtdb
+                        (hash-map :find '[(pull ?v [*])]
+                                  :in '[c]
+                                  :where where)
                         (str "collections/" collection-id))]
         ;; NOTE: "resources", not "records"?
         (ring-response/response {:resources (map #(->rest-record (first %)) q-res)})))))
@@ -201,7 +203,7 @@
 (defn get-handler [xtdb-node req]
   (let [parts (uri-parts (:uri req))]
             (case (count parts)
-              1 (list-records xtdb-node (first parts))
+              1 (list-records xtdb-node (first parts) (:query-params req))
               2 (get-record xtdb-node (first parts) (second parts))
               {:status 400
                :body {:message "Invalid url"}})))
