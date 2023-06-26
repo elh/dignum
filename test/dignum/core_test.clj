@@ -3,8 +3,8 @@
             [dignum.core :refer :all]
             [xtdb.api :as xt]))
 
-;; TODO: rewrite all tests for better output. `is`/`are` form must be function call, not macro. just manually manage the
-;; cases and use `is`?
+;; TODO: rewrite tests for better test feeback. `is`/`are` form must be function call, not macro. just manually iterate
+;; the cases and use `is`?
 (deftest create-collection-test
   (let [prior-coll {"_name" "collections/teams"
                     "schema" {"type" "object"}}]

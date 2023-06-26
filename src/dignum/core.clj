@@ -10,11 +10,13 @@
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
+;;;; TODOs:
 ;; TODO: prevent users from setting system fields
-;; TODO: custom hooks OR wrap server. add custom logic
-;; TODO: do more transactionally? use transaction function for validation?
-;; TODO: parent field?
-;; TODO: created and updated timestamps?
+;; TODO: support list params
+;; TODO: can a user add custom logic to the server? via custom hooks? wrap this server? lib v. framework approach?
+;; TODO: write transactionally? use transaction function for validation? jinx would need to be installed on xtdb node.
+;; TODO: other conventional fields: parent field? created and updated timestamps?
+;; TODO: writes via JSON Patch or JSON Merge Patch?
 
 (def collections-schema {"type" "object"
                          "properties" {"schema" {"type" "object"}},
@@ -140,7 +142,7 @@
             {:status 404
              :body {:message (str "Not Found")}}
             (if (= collection-id "collections")
-              ;; TODO: schema correctness for existing resources? migration approach?
+              ;; NOTE: backwards compatible schema changes + migration is currently unmanaged by the system
               (create-collection xtdb-node (-> record
                                                (assoc "_collection" "collections/collections")
                                                (assoc "_name" (str collection-id "/" record-id))))
@@ -177,12 +179,13 @@
              (nil? (xt/entity xtdb (str "collections/" collection-id))))
       {:status 404
        :body {:message (str "Collection does not exist: " (str "collections/" collection-id))}}
+      ;; no list params right now...
       (let [q-res (xt/q xtdb
                         '{:find [(pull ?v [*])]
                           :in [c]
                           :where [[?v :_collection c]]}
                         (str "collections/" collection-id))]
-        ;; TODO: "resources" or "records"?
+        ;; NOTE: "resources", not "records"?
         (ring-response/response {:resources (map #(->rest-record (first %)) q-res)})))))
 
 (defn get-handler [xtdb-node req]
