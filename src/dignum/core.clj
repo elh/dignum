@@ -10,11 +10,7 @@
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
-;;;; TODOs:
-;; TODO: can a user add custom logic to the server? via custom hooks? wrap this server? lib v. framework approach?
-;; TODO: write transactionally? use transaction function for validation? jinx would need to be installed on xtdb node.
-;; TODO: other conventional fields: parent field? created and updated timestamps?
-;; TODO: writes via JSON Patch or JSON Merge Patch?
+;; TODOs -> https://github.com/elh/dignum/blob/main/TODO.md
 
 (def collections-schema {"type" "object"
                          "properties" {"_collection" {"type" "string"

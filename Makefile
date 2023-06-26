@@ -11,4 +11,4 @@ lint:
 	@clj -M:lint
 
 drop-db:
-	@lein exec -p scripts/delete_all_records.clj
+	@lein exec -p scripts/drop_db.clj
