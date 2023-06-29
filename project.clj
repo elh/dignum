@@ -1,6 +1,8 @@
 (defproject dignum "0.1.0-SNAPSHOT"
-  :description "Dignum Server"
+  :description "A REST API generator for XTDB records"
   :url "https://github.com/elh/dignum"
+  :license {:name "The MIT License"
+            :url "http://opensource.org/licenses/MIT"}
   :dependencies [[org.clojure/clojure "1.11.1"]
                  [org.clojure/data.json "2.4.0"]
                  [ring/ring-jetty-adapter "1.10.0"]
