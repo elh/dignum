@@ -1,5 +1,7 @@
 (ns dignum.core
   (:gen-class)
+  (:import [com.fasterxml.jackson.databind ObjectMapper]
+           [com.github.fge.jsonpatch JsonPatch])
   (:require [clojure.walk :as walk]
             [clojure.set :as set]
             [clojure.string :as str]
@@ -137,9 +139,48 @@
              :body {:message (str "Not Found")}}
             (if (= collection-id "collections")
               ;; NOTE: backwards compatible schema changes + migration is currently unmanaged by the system
-              (create-collection xtdb-node (-> record
-                                               (assoc "_collection" "collections/collections")
-                                               (assoc "_name" (str collection-id "/" record-id))))
+              (create-collection xtdb-node (assoc record "_name" (str collection-id "/" record-id)))
+              (create-record xtdb-node collection-id record-id record))))))))
+
+(defn patch-handler [xtdb-node req]
+  (cond
+    (not= "application/json-patch+json" (get-in req [:headers "content-type"]))
+    {:status 400
+     :body {:message "Content-Type must be application/json-patch+json"}}
+
+    (nil? (:body req))
+    {:status 400
+     :body {:message "'body' is required"}}
+
+    (not= (count (uri-parts (:uri req))) 2)
+    {:status 400
+     :body {:message "Invalid resource name in url"}}
+
+    :else
+    (let [parts (uri-parts (:uri req))
+          collection-id (first parts)
+          record-id (second parts)
+          xt-current (xt/entity (xt/db xtdb-node) (str collection-id "/" record-id))]
+      (if (nil? xt-current)
+        {:status 404
+         :body {:message (str "Not Found")}}
+        (let [current-json-node (.readTree (ObjectMapper.) (json/write-str (->rest-record xt-current)))
+              patch-expr (:body req)
+              json-node (.readTree (ObjectMapper.) (json/write-str patch-expr))
+              record (try
+                       (let [json-patch (JsonPatch/fromJson json-node)
+                             record-json-node (.apply json-patch current-json-node)
+                             record (json/read-str (.toString record-json-node))]
+                         record)
+                       (catch Throwable _
+                         nil))]
+          (if (nil? record)
+            ;; TODO: give more context from the exception
+            {:status 400
+             :body {:message "Invalid patch"}}
+            (if (= collection-id "collections")
+              ;; NOTE: backwards compatible schema changes + migration is currently unmanaged by the system
+              (create-collection xtdb-node (assoc record "_name" (str collection-id "/" record-id)))
               (create-record xtdb-node collection-id record-id record))))))))
 
 (defn delete-handler [xtdb-node req]
@@ -202,6 +243,7 @@
     (case (:request-method req)
       :post (create-handler xtdb-node req)
       :put (put-handler xtdb-node req)
+      :patch (patch-handler xtdb-node req)
       :delete (delete-handler xtdb-node req)
       :get (get-handler xtdb-node req)
       {:status 501

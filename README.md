@@ -41,6 +41,11 @@ curl -X PUT "localhost:3000/collections/users" -H "Content-Type: application/jso
         "type": "object"
     }
 }'
+# Patch with JSON Patch
+curl -X PATCH "localhost:3000/collections/users" -H "Content-Type: application/json-patch+json" -d '[
+    { "op": "test", "path": "/schema/properties/name", "value": {"type": "string"} },
+    { "op": "add", "path": "/schema/properties/name", "value": {"type": "object"} }
+]'
 # Delete not implemented at the moment
 ```
 
@@ -55,6 +60,11 @@ curl "localhost:3000/users?name=Bob" -H "Content-Type: application/json" | json_
 curl "localhost:3000/users/f9faf42c-3fec-48d5-907f-b3e8b0debfcb" -H "Content-Type: application/json" | json_pp
 # Update
 curl -X PUT "localhost:3000/users/61c22266-ee21-4ef8-9000-a9e786b3cf59" -H "Content-Type: application/json" -d '{"user_id": "2", "name": "Bob", "age": 33}'
+# Patch with JSON Patch
+curl -X PATCH "localhost:3000/users/61c22266-ee21-4ef8-9000-a9e786b3cf59" -H "Content-Type: application/json-patch+json" -d '[
+    { "op": "test", "path": "/age", "value": 33 },
+    { "op": "add", "path": "/age", "value": 34 }
+]'
 # Delete
 curl -X DELETE "localhost:3000/users/61c22266-ee21-4ef8-9000-a9e786b3cf59" -H "Content-Type: application/json"
 ```

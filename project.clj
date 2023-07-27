@@ -8,7 +8,9 @@
                  [ring/ring-jetty-adapter "1.10.0"]
                  [ring/ring-json "0.5.1"]
                  [com.xtdb/xtdb-http-client "1.23.3"]
-                 [jinx "0.1.6"]]
+                 [jinx "0.1.6"]
+                 [com.fasterxml.jackson.core/jackson-databind "2.15.2"]
+                 [com.github.java-json-tools/json-patch "1.13"]]
   :main ^:skip-aot dignum.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all

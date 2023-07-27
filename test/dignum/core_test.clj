@@ -127,6 +127,70 @@
         {"schema" {"type" "bad"}}
         nil))))
 
+(deftest patch-record-test
+  (let [coll {"_name" "collections/users"
+              "schema" {"type" "object"
+                        "properties" {"name" {"type" "string"}}}}
+        orig-record {"name" "alice"}]
+    (are [desc res-status uri-fn patch expect-rec]
+         (with-open [node (xt/start-node {})]
+           (let [coll-res (handler node {:uri "/collections"
+                                         :request-method :post
+                                         :body coll})
+                 rec-res (handler node {:uri "/users"
+                                        :request-method :post
+                                        :body orig-record})]
+             (when (or (not= 200 (:status coll-res))
+                       (not= 200 (:status rec-res)))
+               (throw (Exception. "setting up fixtures failed")))
+             (let [res (handler node {:uri (uri-fn (get-in rec-res [:body "_name"]))
+                                      :request-method :patch
+                                      :headers {"content-type" "application/json-patch+json"}
+                                      :body patch})]
+               (and (= (:status res)
+                       res-status)
+                    (or (nil? expect-rec)
+                        (= (remove-underscore-keys (:body res)) (remove-underscore-keys expect-rec)))))))
+      "success" 200 (fn [rec-name] (str "/" rec-name)) [{"op" "replace" "path" "/name" "value" "alison"}] {"name" "alison"}
+      "nonexistent record" 404 (fn [_] "/users/dne") [{"op" "replace" "path" "/name" "value" "alison"}] nil
+      "result is validated" 400 (fn [rec-name] (str "/" rec-name)) [{"op" "replace" "path" "/name" "value" true}] nil
+      "invalid patch op" 400 (fn [rec-name] (str "/" rec-name)) [{"op" "invalid-op" "path" "/name" "value" "alison"}] nil
+      "invalid patch" 400 (fn [rec-name] (str "/" rec-name)) [{"op" "copy" "from" "/dne" "path" "/dne_2"}] nil
+      "fail test op" 400 (fn [rec-name] (str "/" rec-name)) [{"op" "test" "path" "name" "value" "wrong-value"}] nil)))
+
+(deftest patch-collection-test
+  (let [coll {"_name" "collections/users"
+              "schema" {"type" "object"
+                        "properties" {"name" {"type" "string"}}}}]
+    (are [desc res-status uri patch expect-rec]
+         (with-open [node (xt/start-node {})]
+           (let [coll-res (handler node {:uri "/collections"
+                                         :request-method :post
+                                         :body coll})]
+             (when (not= 200 (:status coll-res))
+               (throw (Exception. "setting up fixtures failed")))
+             (let [res (handler node {:uri uri
+                                      :request-method :patch
+                                      :headers {"content-type" "application/json-patch+json"}
+                                      :body patch})]
+               (and (= (:status res)
+                       res-status)
+                    (or (nil? expect-rec)
+                        (= (remove-underscore-keys (:body res)) (remove-underscore-keys expect-rec)))))))
+      "success" 200 "/collections/users"
+      [{"op" "add" "path" "/schema/properties/age" "value" {"type" "number"}}]
+      {"schema" {"type" "object"
+                 "properties" {"name" {"type" "string"}
+                               "age" {"type" "number"}}}}
+
+      "nonexistent collection" 404 "/collections/dne"
+      [{"op" "replace" "path" "/name" "value" "alison"}]
+      nil
+
+      "result is validated" 400 "/collections/users"
+      [{"op" "add" "path" "/schema/properties" "value" 100}]
+      nil)))
+
 (deftest delete-record-test
   (let [coll {"_name" "collections/users"
               "schema" {"type" "object"
