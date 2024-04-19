@@ -11,7 +11,7 @@
                  [jinx "0.1.6"]
                  [com.fasterxml.jackson.core/jackson-databind "2.15.2"]
                  [com.github.java-json-tools/json-patch "1.13"]]
-  :main ^:skip-aot dignum.core
+  :main ^:skip-aot dignum.server
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
                        :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}}

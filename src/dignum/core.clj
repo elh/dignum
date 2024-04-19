@@ -6,10 +6,7 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.data.json :as json]
-            [ring.adapter.jetty :as jetty]
             [ring.util.response :as ring-response]
-            [ring.middleware.json :as ring-json]
-            [ring.middleware.params :as ring-params]
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
@@ -23,9 +20,6 @@
                                        "schema" {"type" "object"}} ;; this will be validated by jinx instantiation
                          "required" ["_collection" "_name" "schema"]
                          "additionalProperties" false})
-
-(defn- log [m]
-  (println (json/write-str m)))
 
 ;; hack: I expected wrap-json-body to handle this for us
 (defn- is-empty-body? [body]
@@ -239,7 +233,6 @@
   (let [req (if (is-empty-body? (:body req))
               (assoc req :body nil)
               req)]
-    (log {:msg "request received" :req (dissoc req :headers)}) ;; don't log headers
     (case (:request-method req)
       :post (create-handler xtdb-node req)
       :put (put-handler xtdb-node req)
@@ -248,22 +241,3 @@
       :get (get-handler xtdb-node req)
       {:status 501
        :body {:message "Unimplemented"}})))
-
-(defn -main []
-  (let [port (if (empty? (System/getenv "PORT"))
-               3000
-               (Integer/parseInt (System/getenv "PORT")))
-        xtdb-url (or (System/getenv "XTDB_URL") "")
-        xtdb-node (if (empty? xtdb-url)
-                    (xt/start-node {})
-                    (xt/new-api-client xtdb-url))]
-    (log {:msg "Starting server"})
-    (log {:msg (str "Listening on port " port)})
-    (if (empty? xtdb-url)
-      (log {:msg "Using in-memory XTDB node"})
-      (log {:msg (str "Using remote XTDB node at " xtdb-url)}))
-    (jetty/run-jetty (-> (partial handler xtdb-node)
-                         ring-json/wrap-json-response
-                         ring-json/wrap-json-body
-                         ring-params/wrap-params)
-                     {:port port})))

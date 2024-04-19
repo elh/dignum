@@ -5,3 +5,4 @@
 * A query endpoint... It breaks the abstraction of this API though because of some of the translatations. Inclided to keep omiting it and have user directly query XTDB.
 * More "List" filter support
 * More conventional REST API features
+* `codox` documentation
