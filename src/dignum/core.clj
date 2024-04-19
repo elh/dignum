@@ -10,8 +10,6 @@
             [xtdb.api :as xt]
             [juxt.jinx-alpha :as jinx]))
 
-;; TODOs -> https://github.com/elh/dignum/blob/main/TODO.md
-
 (def collections-schema {"type" "object"
                          "properties" {"_collection" {"type" "string"
                                                       "const" "collections/collections"}
