@@ -159,21 +159,20 @@
         (let [current-json-node (.readTree (ObjectMapper.) (json/write-str (->rest-record xt-current)))
               patch-expr (:body req)
               json-node (.readTree (ObjectMapper.) (json/write-str patch-expr))
-              record (try
+              res (try
                        (let [json-patch (JsonPatch/fromJson json-node)
                              record-json-node (.apply json-patch current-json-node)
                              record (json/read-str (.toString record-json-node))]
-                         record)
-                       (catch Throwable _
-                         nil))]
-          (if (nil? record)
-            ;; TODO: give more context from the exception
+                         {:record record})
+                       (catch Throwable e
+                         {:error (str "Invalid patch: " e)}))]
+          (if (:error res)
             {:status 400
-             :body {:message "Invalid patch"}}
+             :body {:message (:error res)}}
             (if (= collection-id "collections")
               ;; NOTE: backwards compatible schema changes + migration is currently unmanaged by the system
-              (create-collection xtdb-node (assoc record "_name" (str collection-id "/" record-id)))
-              (create-record xtdb-node collection-id record-id record))))))))
+              (create-collection xtdb-node (assoc (:record res) "_name" (str collection-id "/" record-id)))
+              (create-record xtdb-node collection-id record-id (:record res)))))))))
 
 (defn delete-handler [xtdb-node req]
   (let [parts (uri-parts (:uri req))]
@@ -216,7 +215,6 @@
                                   :in '[c]
                                   :where where)
                         (str "collections/" collection-id))]
-        ;; NOTE: "resources", not "records"?
         (ring-response/response {:resources (map #(->rest-record (first %)) q-res)})))))
 
 (defn get-handler [xtdb-node req]
